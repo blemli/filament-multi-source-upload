@@ -30,7 +30,7 @@
             return /^https?:\/\//i.test(url) ? url : null
         },
 
-        importDrop(event) {
+        async importDrop(event) {
             const url = this.droppedUrl(event)
 
             if (url === null) {
@@ -41,7 +41,14 @@
             event.stopPropagation()
 
             this.url = url
-            this.importFromUrl()
+            await this.importFromUrl()
+
+            // A failed drop must not fail silently: the file pane is showing,
+            // the error lives on the URL pane — bring that pane forward so the
+            // link and the reason are visible and can be retried or edited.
+            if (this.error) {
+                this.tab = 'url'
+            }
         },
 
         async importFromUrl() {
