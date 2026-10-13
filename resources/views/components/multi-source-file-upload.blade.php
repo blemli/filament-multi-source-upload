@@ -68,6 +68,43 @@
             }
         },
 
+        // FilePond is created once Filament's upload component has fetched
+        // its files — a drop within the first moments of the page would
+        // find no pond yet. Wait briefly instead of failing the import.
+        async awaitPond() {
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const uploadEl = this.$refs.filePane.querySelector('[wire\\:ignore]')
+                const fileUpload = uploadEl ? Alpine.$data(uploadEl) : null
+
+                if (fileUpload?.pond) {
+                    return fileUpload
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 50))
+            }
+
+            return null
+        },
+
+        // FilePond skips its layout pass while its root is display:none and
+        // drops the «file added» action with it — the drop label then stays
+        // on top of the item and covers its remove button (Firefox shows the
+        // pane a frame later than Chrome). Hand the file over only once the
+        // file pane is actually laid out.
+        async awaitVisiblePane() {
+            await this.$nextTick()
+
+            for (let attempt = 0; attempt < 20; attempt++) {
+                if (this.$refs.filePane.offsetParent !== null) {
+                    break
+                }
+
+                await new Promise((resolve) => requestAnimationFrame(resolve))
+            }
+
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        },
+
         async importFromUrl() {
             const url = this.url.trim()
 
@@ -95,10 +132,9 @@
                 const blob = await (await fetch(result.dataUrl)).blob()
                 const file = new File([blob], result.name, { type: result.type ?? blob.type })
 
-                const uploadEl = this.$refs.filePane.querySelector('[wire\\:ignore]')
-                const fileUpload = uploadEl ? Alpine.$data(uploadEl) : null
+                const fileUpload = await this.awaitPond()
 
-                if (! fileUpload || ! fileUpload.pond) {
+                if (! fileUpload) {
                     this.error = @js($genericErrorMessage)
 
                     return
@@ -108,6 +144,7 @@
                 // preview, upload and manage the file exactly like a local one.
                 // Any validation failure surfaces inline on the FilePond item.
                 this.tab = 'file'
+                await this.awaitVisiblePane()
                 handedToFilePond = true
 
                 await fileUpload.pond.addFile(file)
